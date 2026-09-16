@@ -1,3 +1,7 @@
+"""
+FM-PINN — BLOCK 1: IMPROVED IDENTIFIABILITY STUDY (realistic observations)
+"""
+
 from __future__ import annotations
 import time
 import numpy as np
@@ -51,10 +55,35 @@ def solve_ref(alpha, gamma, D, x_min, x_max, Nx, T, Nt, s_ic):
     return x, t, P, dx
 
 
+
+
+def solve_truth_fine(alpha, gamma, D, x_min, x_max, T, s_ic,
+                     Nx_coarse, Nt_coarse, Nx_fine=601, Nt_fine=1500):
+    """FIX #1 (inverse crime): truth on a FINE grid (601x1500), subsampled to
+       the coarse recovery grid. Data and recovery no longer share a scheme."""
+    xf = np.linspace(x_min, x_max, Nx_fine).astype(NP)
+    _, _, Pf, _ = solve_ref(alpha, gamma, D, x_min, x_max, Nx_fine, T, Nt_fine, s_ic)
+    xc = np.linspace(x_min, x_max, Nx_coarse).astype(NP); dxc = xc[1] - xc[0]
+    tc = np.linspace(0.0, T, Nt_coarse + 1).astype(NP)
+    xi = np.clip(np.searchsorted(xf, xc), 0, Nx_fine - 1)
+    ti = np.clip(np.round(tc * Nt_fine / T).astype(int), 0, Nt_fine)
+    Pc = Pf[ti][:, xi].copy()
+    Pc = Pc / (dxc * Pc.sum(axis=1, keepdims=True))
+    return xc, tc, Pc, dxc
+
 # =====================================================================
-# OBSERVATION MODEL
+#  HONEST OBSERVATION MODEL — one finite sample per observed window
 # =====================================================================
 def observe(P, x, dx, N_sample, noise_pct, obs_indices, rng):
+    """
+    Build the OBSERVED densities the way real data would give them:
+      - only at the time slices in obs_indices (sparse observation),
+      - each slice estimated from ONE finite sample of N_sample returns
+        (inverse-CDF draw from the true density -> histogram on the grid),
+      - plus optional multiplicative measurement noise of noise_pct.
+    Returns (P_obs_sparse, obs_indices): P_obs_sparse has the same shape as
+    P but is only trusted/compared at obs_indices (a mask is applied in the loss).
+    """
     Nt1, Nx = P.shape
     P_obs = P.copy()
     for it in obs_indices:
@@ -94,7 +123,9 @@ class EnergyNet(nn.Module):
 def recover_alpha(P_obs, obs_mask, x, t, dx, n_iter=4000, lr=5e-3,
                   seed=0, device='cpu'):
     """
-    Recover alpha from the observed (sparse, noisy) densities. 
+    Recover alpha from the observed (sparse, noisy) densities. The data-fit
+    term is applied ONLY at observed time slices (obs_mask). Physics residual
+    is enforced everywhere. Model architecture identical to Task 3.
     """
     torch.manual_seed(seed); np.random.seed(seed)
     Nx = len(x); Nt = len(t) - 1
@@ -143,7 +174,10 @@ def recover_alpha(P_obs, obs_mask, x, t, dx, n_iter=4000, lr=5e-3,
 #  SWEEP HELPERS
 # =====================================================================
 def make_obs_mask(Nt1, n_snapshots=None, interval=None):
-    """Build the boolean observation mask over time indices 1."""
+    """Build the boolean observation mask over time indices 1..Nt.
+       n_snapshots: keep this many equally-spaced slices (plus the IC at 0).
+       interval: observe every `interval` steps.
+       'full' = all slices."""
     mask = np.zeros(Nt1, dtype=bool)
     mask[0] = True                                  # IC always known
     if interval is not None:
@@ -171,7 +205,7 @@ N_ITER = 4000
 
 
 def run_block1():
-    x, t, P, dx = solve_ref(TRUE_ALPHA, GAMMA, D_COEF, XMIN, XMAX, NX, T_END, NT, S_IC)
+    x, t, P, dx = solve_truth_fine(TRUE_ALPHA, GAMMA, D_COEF, XMIN, XMAX, T_END, S_IC, NX, NT)  # FIX #1: fine-grid truth
     Nt1 = len(t)
     full_mask = make_obs_mask(Nt1)   # observe everything
 
@@ -239,7 +273,7 @@ def plot_block1(ax1, ax2, ax3, ax4):
 
 if __name__ == "__main__":
     print("#"*62)
-    print("")
+    print("#  FM-PINN BLOCK 1 — IMPROVED IDENTIFIABILITY STUDY")
     print(f"#  true alpha={TRUE_ALPHA}, {N_SEEDS} seeds, {N_ITER} iters, grid {NX}x{NT}")
     print("#  honest observation: ONE finite sample per observed window")
     print("#"*62)
@@ -254,4 +288,4 @@ if __name__ == "__main__":
     print("          1 snapshot should be badly non-identifiable (Task 3 Part C).")
     print("  Axis 4: sparser observation (larger interval) should degrade recovery.")
     print("  Together these map the REGIME where alpha is identifiable from")
-    print("  realistic, sparse, noisy observations — the honest core of the paper.")
+    print(" ")
