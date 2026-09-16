@@ -27,7 +27,7 @@ except Exception:
 
 
 # =====================================================================
-#  SHARED SOLVER + FINE-GRID TRUTH (fix #1) + observation
+#  SHARED SOLVER + FINE-GRID TRUTH + observation
 # =====================================================================
 def l1_weights_np(alpha, n):
     if abs(alpha - 1.0) < 1e-12:
@@ -95,7 +95,7 @@ def observe(P, x, dx, N_sample, noise_pct, obs_indices, rng):
 
 
 # =====================================================================
-#  METHOD 0 — PINN (architecture UNCHANGED)
+#  METHOD 0 — PINN 
 # =====================================================================
 class EnergyNet(nn.Module):
     def __init__(self, hidden=48, layers=3):
@@ -153,7 +153,7 @@ def pinn_recover(P_obs, obs_mask, x, t, dx, n_iter=3000, lr=5e-3, seed=0, device
 
 
 # =====================================================================
-#  BASELINES — model-family (B1,B2,B3) + DFA/Hurst (fix #4)
+#  BASELINES — model-family (B1,B2,B3) + DFA/Hurst 
 # =====================================================================
 def baseline_grid_search(P_obs, obs_mask, x, t, dx):
     obs = np.where(obs_mask)[0]; best = (None, np.inf)
@@ -275,7 +275,7 @@ def plot_comparison(results):
 
 
 # =====================================================================
-#  PART B — REAL-DATA BLOCK-BOOTSTRAP ERROR BARS (unchanged logic)
+#  PART B — REAL-DATA BLOCK-BOOTSTRAP ERROR BARS 
 # =====================================================================
 def load_sp500(start="1985-01-01", end="2025-12-31"):
     if not HAVE_YF:
