@@ -1,0 +1,45 @@
+##############################################################
+#  FM-PINN BLOCK 2 (P1+P2 ONLY) — JOINT-PARAMETER + IDENTIFIABILITY PROFILE
+##############################################################
+
+============================================================
+  P1 — joint-parameter recovery (bias/RMSE/std/correlation)
+============================================================
+  --- recover alpha ---
+    alpha: mean=0.6869 (true 0.7) bias=-0.0131 RMSE=0.0265 std=0.0231
+  --- recover alpha+gamma ---
+    alpha: mean=0.6875 (true 0.7) bias=-0.0125 RMSE=0.0300 std=0.0272
+    gamma: mean=0.9912 (true 1.0) bias=-0.0088 RMSE=0.0265 std=0.0250
+    corr(alpha,gamma) = +0.647  (mild)
+  --- recover alpha+D ---
+    alpha: mean=0.6927 (true 0.7) bias=-0.0073 RMSE=0.0259 std=0.0248
+    D: mean=0.0200 (true 0.02) bias=+0.0000 RMSE=0.0003 std=0.0003
+    corr(alpha,D) = -0.582  (mild)
+  --- recover alpha+gamma+D ---
+    alpha: mean=0.6578 (true 0.7) bias=-0.0422 RMSE=0.0526 std=0.0314
+    gamma: mean=0.7723 (true 1.0) bias=-0.2277 RMSE=0.2907 std=0.1807
+    D: mean=0.0172 (true 0.02) bias=-0.0028 RMSE=0.0037 std=0.0024
+    corr(alpha,gamma) = +0.624  (mild)
+    corr(alpha,D) = +0.570  (mild)
+    corr(gamma,D) = +0.993  (strong confounding)
+
+============================================================
+  P2 — HONEST identifiability profile (train net at each fixed alpha)
+============================================================
+    fixed alpha=0.550: converged PDE residual = 2.2534e-02
+    fixed alpha=0.600: converged PDE residual = 1.5362e-02
+    fixed alpha=0.650: converged PDE residual = 1.2380e-02
+    fixed alpha=0.700: converged PDE residual = 1.2846e-02
+    fixed alpha=0.750: converged PDE residual = 1.5189e-02
+    fixed alpha=0.800: converged PDE residual = 2.0498e-02
+    fixed alpha=0.850: converged PDE residual = 2.6541e-02
+  minimum at alpha=0.650 (true 0.7); depth (max/min) = 2.1x
+  (SHALLOW minimum -> weakly identifiable)
+
+  HOW TO READ:
+  P1: small bias/RMSE + weak inter-parameter correlation => alpha robust to
+      also estimating gamma, D; strong correlation => those params confound.
+  P2 (honest): minimum at true alpha. Depth tells strength — a shallow
+      minimum honestly means alpha is only WEAKLY identifiable from data alone.
+  (P3 coverage/calibration is done separately in fmpinn_block2_P3_calibrated_v3.py,
+   which already produced the valid calibrated-interval O3 result.)
