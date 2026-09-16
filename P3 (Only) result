@@ -1,0 +1,84 @@
+################################################################
+#  FM-PINN BLOCK 2 (P3 v2) — CORRECTED CALIBRATION
+#  fix #1 fine-grid truth; fix #3 pooled/held-out/(n+1)-quantile/binomial-CI
+################################################################
+
+================================================================
+  P3 (v2) — calibrated coverage: pooled cross-alpha, held-out test
+================================================================
+  Calibration pooled over alphas (0.6, 0.7, 0.8), 20 datasets each ...
+    [cal] alpha=0.6 dataset 1/20  mean=0.6239  (99s)
+    [cal] alpha=0.6 dataset 2/20  mean=0.6133  (91s)
+    [cal] alpha=0.6 dataset 3/20  mean=0.5522  (91s)
+    [cal] alpha=0.6 dataset 4/20  mean=0.5794  (91s)
+    [cal] alpha=0.6 dataset 5/20  mean=0.5935  (90s)
+    [cal] alpha=0.6 dataset 6/20  mean=0.6114  (86s)
+    [cal] alpha=0.6 dataset 7/20  mean=0.6730  (88s)
+    [cal] alpha=0.6 dataset 8/20  mean=0.5756  (92s)
+    [cal] alpha=0.6 dataset 9/20  mean=0.5951  (90s)
+    [cal] alpha=0.6 dataset 12/20  mean=0.6009  (89s)
+    [cal] alpha=0.6 dataset 13/20  mean=0.6152  (91s)
+    [cal] alpha=0.6 dataset 14/20  mean=0.5658  (87s)
+    [cal] alpha=0.6 dataset 15/20  mean=0.6385  (86s)
+    [cal] alpha=0.6 dataset 16/20  mean=0.6436  (90s)
+    [cal] alpha=0.6 dataset 17/20  mean=0.6158  (90s)
+    [cal] alpha=0.6 dataset 18/20  mean=0.5599  (91s)
+    [cal] alpha=0.6 dataset 19/20  mean=0.6100  (91s)
+    [cal] alpha=0.6 dataset 20/20  mean=0.6300  (90s)
+    [cal] alpha=0.7 dataset 1/20  mean=0.6855  (93s)
+    [cal] alpha=0.7 dataset 2/20  mean=0.7518  (91s)
+    [cal] alpha=0.7 dataset 3/20  mean=0.7793  (84s)
+    [cal] alpha=0.7 dataset 4/20  mean=0.7235  (91s)
+    [cal] alpha=0.7 dataset 5/20  mean=0.7328  (91s)
+    [cal] alpha=0.7 dataset 6/20  mean=0.6872  (89s)
+    [cal] alpha=0.7 dataset 7/20  mean=0.6875  (91s)
+    [cal] alpha=0.7 dataset 8/20  mean=0.7377  (90s)
+    [cal] alpha=0.7 dataset 10/20  mean=0.7167  (90s)
+    [cal] alpha=0.7 dataset 11/20  mean=0.7207  (86s)
+    [cal] alpha=0.7 dataset 15/20  mean=0.7534  (91s)
+    [cal] alpha=0.7 dataset 16/20  mean=0.7308  (90s)
+    [cal] alpha=0.7 dataset 17/20  mean=0.7173  (90s)
+    [cal] alpha=0.7 dataset 18/20  mean=0.7372  (91s)
+    [cal] alpha=0.7 dataset 19/20  mean=0.6837  (89s)
+    [cal] alpha=0.7 dataset 20/20  mean=0.7207  (88s)
+    [cal] alpha=0.8 dataset 1/20  mean=0.7508  (93s)
+    [cal] alpha=0.8 dataset 2/20  mean=0.7930  (90s)
+    [cal] alpha=0.8 dataset 3/20  mean=0.8290  (89s)
+    [cal] alpha=0.8 dataset 6/20  mean=0.7962  (90s)
+    [cal] alpha=0.8 dataset 7/20  mean=0.8049  (89s)
+    [cal] alpha=0.8 dataset 8/20  mean=0.8377  (86s)
+    [cal] alpha=0.8 dataset 9/20  mean=0.8478  (90s)
+    [cal] alpha=0.8 dataset 10/20  mean=0.8325  (89s)
+    [cal] alpha=0.8 dataset 11/20  mean=0.7706  (88s)
+    [cal] alpha=0.8 dataset 12/20  mean=0.8017  (89s)
+    [cal] alpha=0.8 dataset 13/20  mean=0.8323  (88s)
+    [cal] alpha=0.8 dataset 14/20  mean=0.7947  (89s)
+    [cal] alpha=0.8 dataset 15/20  mean=0.8231  (89s)
+    [cal] alpha=0.8 dataset 17/20  mean=0.8239  (89s)
+    [cal] alpha=0.8 dataset 18/20  mean=0.8280  (90s)
+    [cal] alpha=0.8 dataset 19/20  mean=0.8228  (89s)
+    [cal] alpha=0.8 dataset 20/20  mean=0.7863  (91s)
+  pooled datasets = 60,  naive coverage on calibration = 50%  ->  conformal factor c = 3.56
+
+  Held-out test on alphas (0.65, 0.75) (40 datasets each):
+    [test] alpha=0.65 dataset 10/40
+    [test] alpha=0.65 dataset 20/40
+    [test] alpha=0.65 dataset 30/40
+    [test] alpha=0.65 dataset 40/40
+    alpha=0.65 (HELD OUT):
+      naive      coverage = 22/40 = 55%  95%CI [38%, 71%]
+      CALIBRATED coverage = 38/40 = 95%  95%CI [83%, 99%]
+    [test] alpha=0.75 dataset 10/40
+    [test] alpha=0.75 dataset 40/40
+    alpha=0.75 (HELD OUT):
+      naive      coverage = 15/40 = 38%  95%CI [23%, 54%]
+      CALIBRATED coverage = 38/40 = 95%  95%CI [83%, 99%]
+
+  VALID calibration = calibrated coverage CI contains 95% at held-out alpha,
+  using a single alpha-agnostic factor -> applicable when alpha is unknown.
+
+  total wall 12500.9s
+
+  SUMMARY (held-out alphas):
+    alpha=0.65: naive=55%  calibrated=95%  factor c=3.56
+    alpha=0.75: naive=38%  calibrated=95%  factor c=3.56
