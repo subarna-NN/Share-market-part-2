@@ -1,0 +1,48 @@
+##############################################################
+#  FM-PINN BLOCK 1 — IMPROVED IDENTIFIABILITY STUDY
+#  true alpha=0.7, 5 seeds, 4000 iters, grid 101x100
+#  honest observation: ONE finite sample per observed window
+##############################################################
+
+============================================================
+  AXIS 1 — sample size N (one sample/window, full obs)
+============================================================
+    N=  250: alpha=0.6750 +/- 0.0254  (true 0.7, err 0.0250)
+    N= 1000: alpha=0.6615 +/- 0.0030  (true 0.7, err 0.0385)
+    N= 5000: alpha=0.6948 +/- 0.0063  (true 0.7, err 0.0052)
+
+============================================================
+  AXIS 2 — measurement noise level (N=1000, full obs)
+============================================================
+    noise= 0%: alpha=0.6615 +/- 0.0030  (err 0.0385)
+    noise= 1%: alpha=0.6642 +/- 0.0032  (err 0.0358)
+    noise= 5%: alpha=0.6654 +/- 0.0034  (err 0.0346)
+    noise=10%: alpha=0.6667 +/- 0.0043  (err 0.0333)
+    noise=20%: alpha=0.6637 +/- 0.0036  (err 0.0363)
+
+============================================================
+  AXIS 3 — # observed snapshots (N=1000)
+============================================================
+    snapshots=   1: alpha=0.3172 +/- 0.0519  (err 0.3828)
+    snapshots=   5: alpha=0.6686 +/- 0.0200  (err 0.0314)
+    snapshots=  10: alpha=0.6679 +/- 0.0060  (err 0.0321)
+    snapshots=  25: alpha=0.6676 +/- 0.0070  (err 0.0324)
+    snapshots=full: alpha=0.6615 +/- 0.0030  (err 0.0385)
+
+============================================================
+  AXIS 4 — observation interval (N=1000)
+============================================================
+    every  1 steps (101 obs): alpha=0.6615 +/- 0.0030  (err 0.0385)
+    every  5 steps (21 obs): alpha=0.6880 +/- 0.0122  (err 0.0120)
+    every 10 steps (11 obs): alpha=0.6919 +/- 0.0078  (err 0.0081)
+    every 20 steps (6 obs): alpha=0.7711 +/- 0.0307  (err 0.0711)
+ total wall 6501.6s
+
+  HOW TO READ:
+  Axis 1: error should fall as N grows (more data = better).
+  Axis 2: error should rise with noise.
+  Axis 3: error should fall as more snapshots are observed;
+          1 snapshot should be badly non-identifiable (Task 3 Part C).
+  Axis 4: sparser observation (larger interval) should degrade recovery.
+  Together these map the REGIME where alpha is identifiable from
+  realistic, sparse, noisy observations — the honest core.
