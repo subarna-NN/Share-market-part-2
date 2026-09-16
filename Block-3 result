@@ -1,0 +1,60 @@
+################################################################
+#  FM-PINN BLOCK 3 (v2) — BASELINES incl. DFA/HURST + REAL-DATA BANDS
+#  fix #1: fine-grid truth (601x1500) subsampled to 101x100
+#  fix #4: DFA/Hurst added as memory-estimator baselines
+################################################################
+
+================================================================
+  PART A — baseline comparison (fine-grid truth, error bars)
+================================================================
+
+  --- noise = 0% (N=1000 returns/window, full observation) ---
+    PINN (ours)       : |err| = 0.0326 +/- 0.0268
+    L1 grid-search    : |err| = 0.0400 +/- 0.0126
+    LSQ PDE-residual  : |err| = 0.2000 +/- 0.0000
+    fixed-alpha=1     : |err| = 0.3000 +/- 0.0000
+    DFA/Hurst (path)  : |err| = 0.0447 +/- 0.0073  (alpha_est=0.745, from 1D path, no density/IC/transient)
+
+  --- noise = 5% (N=1000 returns/window, full observation) ---
+    PINN (ours)       : |err| = 0.0222 +/- 0.0221
+    L1 grid-search    : |err| = 0.0400 +/- 0.0126
+    LSQ PDE-residual  : |err| = 0.2000 +/- 0.0000
+    fixed-alpha=1     : |err| = 0.3000 +/- 0.0000
+    DFA/Hurst (path)  : |err| = 0.0447 +/- 0.0073  (alpha_est=0.745, from 1D path, no density/IC/transient)
+
+  --- noise = 20% (N=1000 returns/window, full observation) ---
+    PINN (ours)       : |err| = 0.0418 +/- 0.0151
+    L1 grid-search    : |err| = 0.0400 +/- 0.0126
+    LSQ PDE-residual  : |err| = 0.2000 +/- 0.0000
+    fixed-alpha=1     : |err| = 0.3000 +/- 0.0000
+    DFA/Hurst (path)  : |err| = 0.0447 +/- 0.0073  (alpha_est=0.745, from 1D path, no density/IC/transient)
+================================================================
+  PART B — real S&P 500 statistics with block-bootstrap 95% bands
+  (block length 252 trading days ~ 1 year; n_boot=400)
+================================================================
+  loaded 10328 daily log-returns (^GSPC, adjusted close, 1985-2025)
+
+  |return| autocorrelation (mean [95% band]):
+    lag    1: 0.2689  [0.1757, 0.3469]
+    lag    5: 0.3018  [0.1966, 0.3905]
+    lag   10: 0.2398  [0.1551, 0.3248]
+    lag   20: 0.1789  [0.1042, 0.2627]
+    lag   50: 0.0969  [0.0452, 0.1579]
+    lag  100: 0.0460  [0.0040, 0.0998]
+
+  decay-shape gap (R2_powerlaw - R2_exp): -0.241 [-0.378, -0.067]
+    -> favors EXPONENTIAL (short memory) — band does NOT span zero
+  Honest wording for the paper: volatility clustering (autocorrelation) is
+  statistically significant, but the fitted decay-shape comparison favors
+  exponential over power-law. Do NOT call this proof of strict long memory.
+
+  total wall 903.2s
+
+  HONEST FRAMING (report as-is):
+  - FM-PINN and L1 grid-search: comparable on single-alpha (not 'better').
+  - DFA/Hurst: COMPARABLE accuracy too, from a 1D path with NO density/IC/
+    transient. So FM-PINN is NOT justified by single-alpha accuracy.
+  - FM-PINN's real advantage = what DFA/Hurst CANNOT do: joint alpha+gamma+D
+    recovery, a calibrated uncertainty interval, and a full valid density.
+  - LSQ-residual fails under noise; fixed-alpha=1 is the no-memory null.
+  - Real S&P: volatility clustering significant; decay-shape favors exponential.
