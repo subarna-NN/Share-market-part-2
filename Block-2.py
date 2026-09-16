@@ -2,6 +2,7 @@ from __future__ import annotations
 import time
 import numpy as np
 from math import gamma as Gamma
+from scipy import stats
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
@@ -49,6 +50,22 @@ def solve_ref(alpha, gamma, D, x_min, x_max, Nx, T, Nt, s_ic):
     t = np.linspace(0.0, T, Nt + 1).astype(NP)
     return x, t, P, dx
 
+
+
+
+NX_FINE, NT_FINE = 601, 1500
+def solve_truth_fine(alpha, gamma, D, x_min, x_max, T, s_ic,
+                     Nx_coarse=NX, Nt_coarse=NT, Nx_fine=NX_FINE, Nt_fine=NT_FINE):
+    """FIX #1 (inverse crime): fine-grid truth subsampled to coarse recovery grid."""
+    xf = np.linspace(x_min, x_max, Nx_fine).astype(NP)
+    _, _, Pf, _ = solve_ref(alpha, gamma, D, x_min, x_max, Nx_fine, T, Nt_fine, s_ic)
+    xc = np.linspace(x_min, x_max, Nx_coarse).astype(NP); dxc = xc[1] - xc[0]
+    tc = np.linspace(0.0, T, Nt_coarse + 1).astype(NP)
+    xi = np.clip(np.searchsorted(xf, xc), 0, Nx_fine - 1)
+    ti = np.clip(np.round(tc * Nt_fine / T).astype(int), 0, Nt_fine)
+    Pc = Pf[ti][:, xi].copy()
+    Pc = Pc / (dxc * Pc.sum(axis=1, keepdims=True))
+    return xc, tc, Pc, dxc
 
 def observe(P, x, dx, N_sample, noise_pct, obs_indices, rng):
     Nt1, Nx = P.shape
@@ -103,14 +120,17 @@ def _build_grids(x, t, dx, obs_mask, device):
 def recover(P_obs, obs_mask, x, t, dx, which=("alpha",),
             n_iter=4000, lr=5e-3, seed=0, device="cpu"):
     """Recover params in `which` (subset of {'alpha','gamma','D'}); others fixed
-       at true values."""
+       at true values. Model architecture identical to Block 1."""
     torch.manual_seed(seed); np.random.seed(seed)
     Nx, Nt, X, Tt, xin, mask, idx, tri = _build_grids(x, t, dx, obs_mask, device)
     Pdata = torch.tensor(P_obs, device=device)
     net = EnergyNet().to(device)
     alpha_raw = nn.Parameter(torch.tensor(0.0, device=device))
-    gamma_raw = nn.Parameter(torch.tensor(np.log(GAMMA), device=device))
-    D_raw = nn.Parameter(torch.tensor(np.log(D_COEF), device=device))
+    # FIX #2: gamma, D start from RANDOM perturbed values (0.5-2x truth), NOT the answer.
+    _ri = np.random.default_rng(10_000 + seed)
+    _g0 = GAMMA * _ri.uniform(0.5, 2.0); _D0 = D_COEF * _ri.uniform(0.5, 2.0)
+    gamma_raw = nn.Parameter(torch.tensor(np.log(_g0), device=device))
+    D_raw = nn.Parameter(torch.tensor(np.log(_D0), device=device))
     def A(): return 0.05 + 0.9 * torch.sigmoid(alpha_raw)
     def G(): return torch.exp(gamma_raw) if "gamma" in which else torch.tensor(GAMMA, device=device)
     def Dv(): return torch.exp(D_raw) if "D" in which else torch.tensor(D_COEF, device=device)
@@ -185,7 +205,7 @@ def profile_fixed_alpha(P_obs, obs_mask, x, t, dx, alpha_fixed,
 # =====================================================================
 def joint_parameter_study(true_alpha=0.7, n_seeds=20, n_iter=4000):
     print("\n" + "="*60 + "\n  P1 — joint-parameter recovery (bias/RMSE/std/correlation)\n" + "="*60)
-    x, t, P, dx = solve_ref(true_alpha, GAMMA, D_COEF, XMIN, XMAX, NX, T_END, NT, S_IC)
+    x, t, P, dx = solve_truth_fine(true_alpha, GAMMA, D_COEF, XMIN, XMAX, T_END, S_IC)  # FIX #1
     mask = np.ones(len(t), bool)
     truth = {"alpha": true_alpha, "gamma": GAMMA, "D": D_COEF}
     configs = [("alpha",), ("alpha", "gamma"), ("alpha", "D"), ("alpha", "gamma", "D")]
@@ -212,11 +232,11 @@ def joint_parameter_study(true_alpha=0.7, n_seeds=20, n_iter=4000):
 
 
 # =====================================================================
-#  P2 — HONEST IDENTIFIABILITY PROFILE
+#  P2 — IDENTIFIABILITY PROFILE
 # =====================================================================
 def identifiability_profile(true_alpha=0.7, n_iter=3000, n_seeds=2):
     print("\n" + "="*60 + "\n  P2 — HONEST identifiability profile (train net at each fixed alpha)\n" + "="*60)
-    x, t, P, dx = solve_ref(true_alpha, GAMMA, D_COEF, XMIN, XMAX, NX, T_END, NT, S_IC)
+    x, t, P, dx = solve_truth_fine(true_alpha, GAMMA, D_COEF, XMIN, XMAX, T_END, S_IC)  # FIX #1
     mask = np.ones(len(t), bool)
     rng = np.random.default_rng(7)
     P_obs = observe(P, x, dx, 1000, 0.0, np.where(mask)[0], rng)
@@ -240,43 +260,6 @@ def identifiability_profile(true_alpha=0.7, n_iter=3000, n_seeds=2):
 # =====================================================================
 #  P3 — COVERAGE / CALIBRATION
 # =====================================================================
-def coverage_test(true_alphas=(0.6, 0.7, 0.8), n_datasets=30, ensemble=8,
-                  n_iter=3000, noise_pct=5.0, cal_frac=0.5):
-    """
-    Coverage / calibration of the interval on recovered alpha.
-    """
-    print("\n" + "="*60 + "\n  P3 — coverage / calibration of the alpha interval (O3)\n" + "="*60)
-    cov = {}
-    for ta in true_alphas:
-        x, t, P, dx = solve_ref(ta, GAMMA, D_COEF, XMIN, XMAX, NX, T_END, NT, S_IC)
-        mask = np.ones(len(t), bool)
-        means = np.zeros(n_datasets); halfw = np.zeros(n_datasets)
-        for d in range(n_datasets):
-            rng = np.random.default_rng(5000 + 100*int(ta*100) + d)
-            P_obs = observe(P, x, dx, 1000, noise_pct, np.where(mask)[0], rng)
-            ens = np.array([recover(P_obs, mask, x, t, dx, which=("alpha",),
-                                    seed=e, n_iter=n_iter)["alpha"] for e in range(ensemble)])
-            means[d] = ens.mean(); halfw[d] = 1.96 * ens.std()
-        # naive coverage (all datasets)
-        naive_cov = np.mean(np.abs(means - ta) <= halfw)
-        # split-conformal calibration
-        n_cal = int(cal_frac * n_datasets)
-        cal, test = slice(0, n_cal), slice(n_cal, n_datasets)
-        ratio = np.abs(means[cal] - ta) / np.maximum(halfw[cal], 1e-9)
-        c = float(np.quantile(ratio, 0.95))
-        naive_test = np.mean(np.abs(means[test] - ta) <= halfw[test])
-        calib_test = np.mean(np.abs(means[test] - ta) <= c * halfw[test])
-        print(f"  true alpha={ta}: mean est={means.mean():.4f}")
-        print(f"    NAIVE  coverage (all)  = {naive_cov*100:.0f}%  (mean width {2*halfw.mean():.4f}) -> overconfident")
-        print(f"    calibration factor c   = {c:.2f}  (from {n_cal} calibration datasets)")
-        print(f"    CALIBRATED coverage (test split) = {calib_test*100:.0f}%  "
-              f"(naive on same test split was {naive_test*100:.0f}%)")
-        cov[ta] = (naive_cov, calib_test, c, float(means.mean()))
-    print("\n  Naive ensemble interval is overconfident (expected). After split-conformal")
-    print("  width calibration, coverage returns toward ~95% => a VALID interval (O3).")
-    return cov
-
-
 # =====================================================================
 #  PLOT
 # =====================================================================
@@ -295,7 +278,7 @@ def plot_profile(grid, resids, amin, true_alpha=0.7):
 # =====================================================================
 if __name__ == "__main__":
     print("#"*62)
-    print(" ")
+    print("#  FM-PINN BLOCK 2 (P1+P2 ONLY) — JOINT-PARAMETER + IDENTIFIABILITY PROFILE")
     print("#"*62)
     t0 = time.time()
 
@@ -304,14 +287,11 @@ if __name__ == "__main__":
     grid, resids, amin = identifiability_profile(true_alpha=0.7, n_iter=3000, n_seeds=2)
     plot_profile(grid, resids, amin, true_alpha=0.7)
 
-    coverage_test(true_alphas=(0.6, 0.7, 0.8), n_datasets=30, ensemble=8, n_iter=3000)
-
     print(f"\n  total wall {time.time()-t0:.1f}s")
-    print("")
+    print("\n  HOW TO READ:")
     print("  P1: small bias/RMSE + weak inter-parameter correlation => alpha robust to")
     print("      also estimating gamma, D; strong correlation => those params confound.")
     print("  P2 (honest): minimum at true alpha. Depth tells strength — a shallow")
     print("      minimum honestly means alpha is only WEAKLY identifiable from data alone.")
-    print("  P3: NAIVE ensemble interval is overconfident (low coverage). After split-")
-    print("      conformal width CALIBRATION, coverage returns to ~95% => valid interval")
-    print("      = the O3 novelty done honestly (calibrated, not a raw single number).")
+    print("  (P3 coverage/calibration is done separately in fmpinn_block2_P3_calibrated_v3.py,")
+    print("   which already produced the valid calibrated-interval O3 result.)")
