@@ -1,7 +1,12 @@
+"""
+FM-PINN — BLOCK 2, P3 ONLY: COVERAGE OF alpha
+"""
+
 from __future__ import annotations
 import time
 import numpy as np
 from math import gamma as Gamma
+from scipy import stats
 import torch
 import torch.nn as nn
 
@@ -11,10 +16,20 @@ NP = np.float64
 GAMMA, D_COEF = 1.0, 0.02
 XMIN, XMAX, T_END, S_IC = -0.6, 0.6, 1.0, 0.07
 NX, NT = 101, 100
+NX_FINE, NT_FINE = 301, 600
+
+# calibration pooled over these alphas; coverage tested on the held-out alphas
+CAL_ALPHAS = (0.60, 0.70, 0.80)
+TEST_ALPHAS = (0.65, 0.75)
+N_CAL_PER_ALPHA = 20      # calibration datasets/alpha (pooled 60 >> 19 needed)
+N_TEST = 40              # test datasets per held-out alpha
+ENSEMBLE = 6
+N_ITER = 3000
+NOISE_PCT = 5.0
 
 
 # =====================================================================
-#  GROUND-TRUTH L1 REFERENCE 
+#  SOLVER + FINE-GRID TRUTH + observation
 # =====================================================================
 def l1_weights_np(alpha, n):
     if abs(alpha - 1.0) < 1e-12:
@@ -47,6 +62,19 @@ def solve_ref(alpha, gamma, D, x_min, x_max, Nx, T, Nt, s_ic):
         P[n] = Minv @ (sigma * b[0] * P[n - 1] - sigma * h)
     t = np.linspace(0.0, T, Nt + 1).astype(NP)
     return x, t, P, dx
+
+
+def solve_truth_fine(alpha, gamma, D, x_min, x_max, T, s_ic,
+                     Nx_coarse=NX, Nt_coarse=NT, Nx_fine=NX_FINE, Nt_fine=NT_FINE):
+    xf = np.linspace(x_min, x_max, Nx_fine).astype(NP)
+    _, _, Pf, _ = solve_ref(alpha, gamma, D, x_min, x_max, Nx_fine, T, Nt_fine, s_ic)
+    xc = np.linspace(x_min, x_max, Nx_coarse).astype(NP); dxc = xc[1] - xc[0]
+    tc = np.linspace(0.0, T, Nt_coarse + 1).astype(NP)
+    xi = np.clip(np.searchsorted(xf, xc), 0, Nx_fine - 1)
+    ti = np.clip(np.round(tc * Nt_fine / T).astype(int), 0, Nt_fine)
+    Pc = Pf[ti][:, xi].copy()
+    Pc = Pc / (dxc * Pc.sum(axis=1, keepdims=True))
+    return xc, tc, Pc, dxc
 
 
 def observe(P, x, dx, N_sample, noise_pct, obs_indices, rng):
@@ -86,8 +114,9 @@ class EnergyNet(nn.Module):
         return self.net(torch.cat([X, T], 1)).view(*shape)
 
 
-def recover_alpha(P_obs, obs_mask, x, t, dx, n_iter=3000, lr=5e-3,
-                  seed=0, device="cpu"):
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+def recover_alpha(P_obs, obs_mask, x, t, dx, n_iter=3000, lr=5e-3, seed=0, device=None):
+    if device is None: device = DEVICE
     torch.manual_seed(seed); np.random.seed(seed)
     Nx = len(x); Nt = len(t) - 1
     xg = torch.tensor(x, device=device); tg = torch.tensor(t, device=device)
@@ -127,59 +156,101 @@ def recover_alpha(P_obs, obs_mask, x, t, dx, n_iter=3000, lr=5e-3,
 
 
 # =====================================================================
-#  P3 — COVERAGE + SPLIT-CONFORMAL CALIBRATION
+#  helper: one dataset - ensemble mean + half-width
 # =====================================================================
-def coverage_test(true_alphas=(0.6, 0.7, 0.8), n_datasets=30, ensemble=8,
-                  n_iter=3000, noise_pct=5.0, cal_frac=0.5):
-    print("\n" + "="*60)
-    print("  P3 — coverage / calibration of the alpha interval (O3)")
-    print("="*60)
-    cov = {}
-    for ta in true_alphas:
-        x, t, P, dx = solve_ref(ta, GAMMA, D_COEF, XMIN, XMAX, NX, T_END, NT, S_IC)
-        mask = np.ones(len(t), bool)
-        means = np.zeros(n_datasets); halfw = np.zeros(n_datasets)
-        for d in range(n_datasets):
-            rng = np.random.default_rng(5000 + 100*int(ta*100) + d)
-            P_obs = observe(P, x, dx, 1000, noise_pct, np.where(mask)[0], rng)
-            ens = np.array([recover_alpha(P_obs, mask, x, t, dx, seed=e, n_iter=n_iter)
-                            for e in range(ensemble)])
-            means[d] = ens.mean(); halfw[d] = 1.96 * ens.std()
-            inside = abs(means[d] - ta) <= halfw[d]
-            print(f"    alpha={ta} dataset {d+1:2d}/{n_datasets}: "
-                  f"ens mean={means[d]:.4f} half-w={halfw[d]:.4f} "
-                  f"{'HIT' if inside else 'miss'}")
-        naive_cov = np.mean(np.abs(means - ta) <= halfw)
-        n_cal = int(cal_frac * n_datasets)
-        cal, test = slice(0, n_cal), slice(n_cal, n_datasets)
-        ratio = np.abs(means[cal] - ta) / np.maximum(halfw[cal], 1e-9)
-        c = float(np.quantile(ratio, 0.95))
-        naive_test = np.mean(np.abs(means[test] - ta) <= halfw[test])
-        calib_test = np.mean(np.abs(means[test] - ta) <= c * halfw[test])
-        print(f"  >>> true alpha={ta}: mean est={means.mean():.4f}")
-        print(f"      NAIVE coverage (all) = {naive_cov*100:.0f}%  "
-              f"(mean width {2*halfw.mean():.4f}) -> overconfident")
-        print(f"      calibration factor c = {c:.2f}  (from {n_cal} calibration datasets)")
-        print(f"      CALIBRATED coverage (test split) = {calib_test*100:.0f}%  "
-              f"(naive on same test split was {naive_test*100:.0f}%)")
-        cov[ta] = (naive_cov, calib_test, c, float(means.mean()))
-    print("\n  Naive ensemble interval is overconfident (expected). After split-conformal")
-    print("  width calibration, coverage returns toward ~95% => a VALID interval (O3).")
-    return cov
+# Cache the FINE-grid truth once per alpha (identical across datasets; only the
+# noise draw differs). This is the key speed fix — previously the 301x600 fine
+# solve ran once PER DATASET (hundreds of times).
+_TRUTH_CACHE = {}
+def _truth(true_alpha):
+    if true_alpha not in _TRUTH_CACHE:
+        _TRUTH_CACHE[true_alpha] = solve_truth_fine(true_alpha, GAMMA, D_COEF,
+                                                    XMIN, XMAX, T_END, S_IC)
+    return _TRUTH_CACHE[true_alpha]
+
+
+def ensemble_interval(true_alpha, dataset_id, ensemble=ENSEMBLE, n_iter=N_ITER):
+    x, t, P, dx = _truth(true_alpha)                      # cached fine solve
+    mask = np.ones(len(t), bool)
+    rng = np.random.default_rng(5000 + int(true_alpha*1000) + dataset_id)
+    P_obs = observe(P, x, dx, 1000, NOISE_PCT, np.where(mask)[0], rng)
+    ens = np.array([recover_alpha(P_obs, mask, x, t, dx, seed=e, n_iter=n_iter)
+                    for e in range(ensemble)])
+    return ens.mean(), 1.96 * ens.std()
+
+
+def conformal_factor(ratios, level=0.95):
+    """finite-sample split-conformal quantile: ceil((n+1)*level)/n -th."""
+    n = len(ratios); q = min(np.ceil((n + 1) * level) / n, 1.0)
+    return float(np.quantile(ratios, q, method="higher"))
+
+
+def binom_ci(hits, n, conf=0.95):
+    a = (1 - conf) / 2
+    lo = stats.beta.ppf(a, hits, n - hits + 1) if hits > 0 else 0.0
+    hi = stats.beta.ppf(1 - a, hits + 1, n - hits) if hits < n else 1.0
+    return float(np.nan_to_num(lo)), float(np.nan_to_num(hi))
+
+
+# =====================================================================
+#  P3 — pooled cross-alpha calibration, held-out coverage, binomial CI
+# =====================================================================
+def coverage_test_v2():
+    print("\n" + "="*64)
+    print("  P3 (v2) — calibrated coverage: pooled cross-alpha, held-out test")
+    print("="*64)
+
+    # --- calibration: pool residual ratios across CAL_ALPHAS (alpha known only
+    #     here, during calibration; the FACTOR is shared and alpha-agnostic) ---
+    print(f"  Calibration pooled over alphas {CAL_ALPHAS}, "
+          f"{N_CAL_PER_ALPHA} datasets each ...")
+    ratios = []
+    import time as _t
+    for ta in CAL_ALPHAS:
+        for d in range(N_CAL_PER_ALPHA):
+            _t0 = _t.time()
+            mean, hw = ensemble_interval(ta, d)
+            ratios.append(abs(mean - ta) / max(hw, 1e-9))
+            print(f"    [cal] alpha={ta} dataset {d+1}/{N_CAL_PER_ALPHA}  "
+                  f"mean={mean:.4f}  ({_t.time()-_t0:.0f}s)", flush=True)
+    ratios = np.array(ratios)
+    c = conformal_factor(ratios, 0.95)
+    naive_cal = np.mean(ratios <= 1.0)
+    print(f"  pooled datasets = {len(ratios)},  naive coverage on calibration = "
+          f"{naive_cal*100:.0f}%  ->  conformal factor c = {c:.2f}")
+
+    # --- test coverage on HELD-OUT alphas, with binomial CI ---
+    print(f"\n  Held-out test on alphas {TEST_ALPHAS} ({N_TEST} datasets each):")
+    summary = {}
+    for ta in TEST_ALPHAS:
+        naive_hits = 0; calib_hits = 0
+        for d in range(N_TEST):
+            mean, hw = ensemble_interval(ta, 10_000 + d)
+            if abs(mean - ta) <= hw: naive_hits += 1
+            if abs(mean - ta) <= c * hw: calib_hits += 1
+            if (d+1) % 10 == 0:
+                print(f"    [test] alpha={ta} dataset {d+1}/{N_TEST}", flush=True)
+        nlo, nhi = binom_ci(naive_hits, N_TEST)
+        clo, chi = binom_ci(calib_hits, N_TEST)
+        print(f"    alpha={ta} (HELD OUT):")
+        print(f"      naive      coverage = {naive_hits}/{N_TEST} = {naive_hits*100/N_TEST:.0f}%"
+              f"  95%CI [{nlo*100:.0f}%, {nhi*100:.0f}%]")
+        print(f"      CALIBRATED coverage = {calib_hits}/{N_TEST} = {calib_hits*100/N_TEST:.0f}%"
+              f"  95%CI [{clo*100:.0f}%, {chi*100:.0f}%]")
+        summary[ta] = (naive_hits/N_TEST, calib_hits/N_TEST, c)
+    print("\n  VALID calibration = calibrated coverage CI contains 95% at held-out alpha,")
+    print("  using a single alpha-agnostic factor -> applicable when alpha is unknown.")
+    return c, summary
 
 
 if __name__ == "__main__":
-    print("#"*62)
-    print("#  FM-PINN BLOCK 2 (P3 ONLY, CALIBRATED) — COVERAGE OF alpha")
-    print("#  true alphas 0.6/0.7/0.8, 30 datasets each, ensemble 8, 5% noise")
-    print("#  split-conformal calibration (50% cal / 50% test)")
-    print("#"*62)
+    print("#"*64)
+    print("#  FM-PINN BLOCK 2 (P3 v2) — CORRECTED CALIBRATION")
+    print("#  fix #1 fine-grid truth; fix #3 pooled/held-out/(n+1)-quantile/binomial-CI")
+    print("#"*64)
     t0 = time.time()
-    cov = coverage_test(true_alphas=(0.6, 0.7, 0.8),
-                        n_datasets=30, ensemble=8, n_iter=3000, cal_frac=0.5)
+    c, summary = coverage_test_v2()
     print(f"\n  total wall {time.time()-t0:.1f}s")
-    print("\n  SUMMARY:")
-    for ta, (naive, calib, c, mn) in cov.items():
-        print(f"    alpha={ta}: naive={naive*100:.0f}%  calibrated={calib*100:.0f}%  "
-              f"factor c={c:.2f}  mean-est={mn:.4f}")
-    print("  Calibrated coverage ~95% => the interval is valid after calibration (O3 done).")
+    print("\n  SUMMARY (held-out alphas):")
+    for ta, (nv, cal, cc) in summary.items():
+        print(f"    alpha={ta}: naive={nv*100:.0f}%  calibrated={cal*100:.0f}%  factor c={cc:.2f}")
