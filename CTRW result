@@ -1,0 +1,19 @@
+########################################################################
+#  FM-PINN INDEPENDENT-DATA EXPERIMENT
+#  mode: INDEPENDENT CTRW SIMULATION (true alpha=0.7) — NOT experimental data; cross-generator check
+#  compare FM-PINN & DFA to the true (CTRW) alpha = 0.7
+########################################################################
+  tracks: 500;  lengths 600..600
+  snapshots at t = [0.1, 0.16, 0.25, 0.4, 0.63, 1.0]  (gamma=0, free)
+  nuisance diffusion fixed: D = 0.0137  (MSD slope a_msd=0.671, scale only)
+
+========================================================================
+  RESULT TABLE
+========================================================================
+  method                                        alpha
+  FM-PINN (ours)                      0.696   (naive hw 0.003)
+  FM-PINN calibrated 95% CI      [0.683, 0.708]   (c=3.56)
+  DFA / Hurst (same tracks)           1.343  +/- 0.470
+  true (CTRW) alpha                   0.700
+
+  calibrated interval contains the true (CTRW) alpha?  YES
